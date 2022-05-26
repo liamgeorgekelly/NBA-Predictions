@@ -30,7 +30,6 @@ teams = ['ATL', 'NJN', 'BOS',	'CHA',	'CHI',	'CLE',	'DAL',	'DEN',	'DET',	'GSW',	'
          'LAC',	'LAL',	'MEM', 'MIA',	'MIL',	'MIN',	'NOH',	'NYK',	'OKC',	'ORL',	'PHI',	'PHO',	'POR',
          'SAC',	'SAS',  'TOR',	'UTA', 'WAS'] # Teams that will be added to the database if all_teams = 0
 
-
 # Initialize DataFrame
 df = pd.DataFrame()
 
@@ -50,19 +49,18 @@ if all_teams == 1:
                 except:
                     pass
 
-
 with alive_bar(len(teams), force_tty=True) as bar: # Initialize progress bar
 
 # Iterate over all seasons for each NBA team
     for team_name in teams:
-        bar() # Update progress bar
-
+        # Obtain data from the team index on basketball reference
+        print('Currently scrapping data for %s' % str(team_name))
         url = 'https://www.basketball-reference.com/teams/' + team_name + '/' # URL for team index on bball reference
         data = requests.get(url).text
         soup = bs(data, "html.parser")
         table = soup.find('table')
 
-        # Use beautiful soup to get the hyperlinks
+        # Use beautiful soup to get the hyperlinks in team index table:
         links = []
         for tr in table.findAll("tr"):
             trs = tr.findAll("td")
@@ -74,38 +72,41 @@ with alive_bar(len(teams), force_tty=True) as bar: # Initialize progress bar
                 except:
                     pass
 
-        for link in links:
-            url_yr = 'https://www.basketball-reference.com' + link
-            if len(pd.read_html(url_yr)) == 7:
-                df_year = pd.read_html(url_yr)[1].sort_values('Unnamed: 1').reset_index()
-                df_adv = pd.read_html(url_yr)[5].sort_values('Unnamed: 1').reset_index()
-            else:
-                df_year = pd.read_html(url_yr)[1].sort_values('Unnamed: 1').reset_index()
-                df_adv = pd.read_html(url_yr)[3].sort_values('Unnamed: 1').reset_index()
-            df_year.drop(axis=1, labels = ['Rk','index'], inplace = True)
-            df_year[['OWS','DWS','WS','WS/48','OBPM','DBPM','BPM']] = df_adv[['OWS','DWS','WS','WS/48','OBPM','DBPM','BPM']]
-            df_year[['team']] = team_name
-            df_year[['season']] = int(link[len(link)-9:len(link)-5])
-            df = pd.concat([df,df_year],axis = 0)
+        with alive_bar(len(links), force_tty=True) as sub_bar:  # Initialize progress bar for individual teams
+            for link in links: # Iterate over each season for a given team
+                url_yr = 'https://www.basketball-reference.com' + link
+                if 'BLB/1955' in url_yr: # pass for the BLB 1955 season as this season was not officially recorded.
+                    pass
+                else:
+                    if len(pd.read_html(url_yr)) == 7: # If the team appeared in the playoffs:
+                        df_year = pd.read_html(url_yr)[3].sort_values('Unnamed: 1').reset_index()
+                        df_adv = pd.read_html(url_yr)[5].sort_values('Unnamed: 1').reset_index()
+                    else: # If the team did not appear in the playoffs:
+                        df_year = pd.read_html(url_yr)[2].sort_values('Unnamed: 1').reset_index()
+                        df_adv = pd.read_html(url_yr)[3].sort_values('Unnamed: 1').reset_index()
+                    df_player_info = pd.read_html(url_yr)[0].reset_index()
+                    df_year.drop(axis=1, labels = ['Rk','index'], inplace = True)
+                    df_year[['OWS','DWS','WS','WS/48','OBPM','DBPM','BPM']] = df_adv[['OWS','DWS','WS','WS/48','OBPM','DBPM','BPM']]
+                    df_year[['team']] = team_name
+                    df_year[['season']] = int(link[len(link)-9:len(link)-5])
+                    df = pd.concat([df,df_year],axis = 0)
+                sub_bar()
+        bar()  # Update progress bar
 
 # Prepare DataFrame for saving
 df.reset_index(inplace = True)
 df.drop(axis=1, labels = ['index'], inplace = True) # Reset and drop the index
+df = df[df['Unnamed: 1'].notna()] # Drop rowa where player name is null
 
 df.columns = ['player_name', 'age', 'G', 'GS', 'MP', 'FG', 'FGA', 'FG%', '3P', '3PA',
              '3P%', '2P', '2PA', '2P%', 'eFG%', 'FT', 'FTA', 'FT%', 'ORB', 'DRB',
-             'TRB', 'AST', 'STL', 'BLK', 'TOV', 'PF', 'PTS/G', 'OWS', 'DWS', 'WS',
+             'TRB', 'AST', 'STL', 'BLK', 'TOV', 'PF', 'PTS', 'OWS', 'DWS', 'WS',
              'WS/48', 'OBPM', 'DBPM', 'BPM', 'team', 'season'] # Rename df columns
-
-print(df.columns)
 df = df[['player_name', 'age', 'team', 'season', 'G', 'GS', 'MP', 'FG', 'FGA', 'FG%', '3P', '3PA',
              '3P%', '2P', '2PA', '2P%', 'eFG%', 'FT', 'FTA', 'FT%', 'ORB', 'DRB',
-             'TRB', 'AST', 'STL', 'BLK', 'TOV', 'PF', 'PTS/G', 'OWS', 'DWS', 'WS',
-             'WS/48', 'OBPM', 'DBPM', 'BPM']] # Rearrange columsn in the datafram
+             'TRB', 'AST', 'STL', 'BLK', 'TOV', 'PF', 'PTS', 'OWS', 'DWS', 'WS',
+             'WS/48', 'OBPM', 'DBPM', 'BPM']] # Rearrange columns in the dataframe
 
 # Save the DataFrame to a MySQL database
 engine = create_engine("mysql://{user}:{pw}@{host}/{db}".format(host=hostname, db=dbname, user=uname, pw=pwd))
 df.to_sql(con = engine, name=file_name, if_exists='replace')
-
-
-
