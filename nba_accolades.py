@@ -88,8 +88,30 @@ with alive_bar(4, force_tty=True) as bar: # Initialize progress bar
     for i, x in enumerate(hof['Inductees']):
         df.loc[df['player_name'] == x, 'hof'] = 1
 
+# Data cleansing: Fixing missing values in the database
+# Drop players who are missing basic stats:
+df = df.drop(axis = 0, index = df.index[pd.isna(df.TRB)]).reset_index()
+
+# Missing values of ORB and DRB
+oreb_ratio = np.asarray(df.ORB.drop(axis = 0, index = df.index[df.TRB == 0]))/np.asarray(df.TRB.drop(axis = 0, index = df.index[df.TRB == 0])) # Obtain the average ratio of ORB to TRB
+oreb_ratio= oreb_ratio[~pd.isna(oreb_ratio)]
+oreb_ratio = np.average(oreb_ratio)
+
+for i, x in enumerate(df.ORB): # Replace Nan values with the player's total TRB times the average ORB/TRB ratio
+    if pd.isna(x):
+        df.loc[i,'ORB'] = int(df.loc[i,'TRB']*oreb_ratio)
+
+for i, x in enumerate(df.DRB): # Replace Nan values with the player's total TRB times the average DRB/TRB ratio
+    if pd.isna(x):
+        df.loc[i,'DRB'] = int(df.loc[i,'TRB']*(1-oreb_ratio))
+
+# Missing values of STL and BLK
+df['BLK'].fillna(value = np.average(df.BLK.dropna()), inplace = True) # Replace BLK Nan values with the average BLK value
+df['STL'].fillna(value = np.average(df.STL.dropna()), inplace = True) # Replace STL Nan values with the average STL value
+
 # Print the DataFrame.
-print(df.sort_values('PTS',ascending= False)[df.columns])
+#print(df.sort_values('PTS',ascending= False)[df.columns])
+print(df[['player_name','WS','TRB','ORB','DRB']].sort_values('TRB',ascending= False).head(10))
 print(df.columns)
 
 # Create dialog box to confirm the saving of the file
@@ -100,7 +122,3 @@ if conf == 'OK':
     # Save the DataFrame to a MySQL database
     engine = create_engine("mysql://{user}:{pw}@{host}/{db}".format(host=hostname, db=dbname, user=uname, pw=pwd))
     df.to_sql(con = engine, name=tablename_d, if_exists='replace')
-
-
-
-
