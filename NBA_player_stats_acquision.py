@@ -28,9 +28,13 @@ dbname = "nba_statistics"
 # Inputs
 table_name_pl = 'nba_players_db'
 table_name_ac = 'nba_accolades_db'
+
+
 # Initialize DataFrame
 df = pd.DataFrame()
 j = 0
+
+# Obtain data for all nba players from basketball-reference.com
 with alive_bar(5023, force_tty=True) as bar: # Initialize progress bar for individual teams
     for i, let in enumerate(string.ascii_lowercase): # Iterate over all players for all alphabetical letters
         # Obtain data from the player index on basketball reference
