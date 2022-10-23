@@ -14,10 +14,8 @@ from bs4 import BeautifulSoup as bs
 from sqlalchemy import create_engine
 from alive_progress import alive_bar
 import string
-import re
 import requests
 import pandas as pd
-
 
 # MySQL Credentials
 hostname = "localhost"
@@ -26,17 +24,18 @@ pwd = "rootroot"
 dbname = "nba_statistics"
 
 # Inputs
-table_name_pl = 'nba_players_db'
-table_name_ac = 'nba_accolades_db'
+table_name_pl = 'nba_players_db' # Table name for player stats for each season.
+table_name_ac = 'nba_accolades_db' # Table name for player accolades.
 
 
-# Initialize DataFrame
+# Initialize DataFrame for storing player stats
 df = pd.DataFrame()
-j = 0
 
 # Obtain data for all nba players from basketball-reference.com
-with alive_bar(5023, force_tty=True) as bar: # Initialize progress bar for individual teams
-    for i, let in enumerate(string.ascii_lowercase): # Iterate over all players for all alphabetical letters
+j = 0 # Initialize counter to count current number of players in the dataframe.
+with alive_bar(5023, force_tty=True) as bar: # Initialize progress bar (5023 current players)
+    # Iterate over all players for all alphabetical letters
+    for i, let in enumerate(string.ascii_lowercase):
         # Obtain data from the player index on basketball reference
         url = 'https://www.basketball-reference.com/players/' + let + '/' # URL for player index on bball reference (by first letter of last name)
         data = requests.get(url).text
@@ -57,13 +56,18 @@ with alive_bar(5023, force_tty=True) as bar: # Initialize progress bar for indiv
 
         for link in links:  # Iterate over each player per alphabetical letter
             bar()  # Update progress bar
-            url_yr = 'https://www.basketball-reference.com' + link
-            data = pd.read_html(url_yr)
 
+            ### Read the player's page using pd.read_html ###
+            url_yr = 'https://www.basketball-reference.com' + link
+            data = pd.read_html(url_yr) # Read the html data for the given player
+
+            ### Obtain the name and birthyear for the player ###
             # Obtain player name and birthyear:
             data_all = requests.get(url_yr).text
             soup = bs(data_all, "html.parser")
-            player_name = soup.find('strong').contents[0].strip()
+            player_name = soup.find('strong').contents[0].strip() # find the name of the player
+
+            # Use the 'birthyears' string to find the player's birthyear
             for span in soup.findAll("span"):
                 for each in span:
                     try:
@@ -71,7 +75,9 @@ with alive_bar(5023, force_tty=True) as bar: # Initialize progress bar for indiv
                             birthyear  = int(str(each)[-8:-4])
                     except:
                         pass
-            # Obtain all career accolades:
+
+            ### Obtain all career accolades ###
+            # Initialize variables to contain the occurance of each accolade for the player:
             champ = 0
             mvp = 0
             fmvp = 0
@@ -80,6 +86,7 @@ with alive_bar(5023, force_tty=True) as bar: # Initialize progress bar for indiv
             allstar = 0
             hof = 0
             k = 0
+
             for a in soup.findAll("a"):
                 for each in a:
                     try:
@@ -138,7 +145,7 @@ with alive_bar(5023, force_tty=True) as bar: # Initialize progress bar for indiv
                     except:
                         pass
 
-            # Save accolades to a separate DataFrame
+            ### Save accolades to a separate DataFrame ###
             if j == 0:
                 accolades = pd.DataFrame([[player_name, birthyear, champ,mvp, fmvp, allstar, allnba, alldef, hof]])
                 accolades.columns = ['player_name','birth_year','champ','mvp','fmvp','allstar','allnba','alldef', 'hof']
@@ -147,7 +154,7 @@ with alive_bar(5023, force_tty=True) as bar: # Initialize progress bar for indiv
             j=j+1
             #print(player_name, 'champ: ', champ, 'mvp: ', mvp, 'fmvp: ', fmvp, 'allstar: ', allstar, 'allnba: ', allnba, 'alldef: ', alldef, 'hof: ', hof)
 
-            # Obtain player Stats
+            ### Obtain player Stats for Each Season in their career ###
             if len(data) == 6: # For players with playoff appearances
                 df_year = data[2]
                 df_year.drop(index = df_year.index[df_year.Tm == 'TOT'], inplace = True)
@@ -193,7 +200,6 @@ df = df[['PLAYER_NAME','BIRTH_YEAR','Season', 'Age', 'Tm', 'Lg', 'Pos', 'G', 'GS
 engine = create_engine("mysql://{user}:{pw}@{host}/{db}".format(host=hostname, db=dbname, user=uname, pw=pwd))
 df.to_sql(con = engine, name=table_name_pl, if_exists='replace')
 accolades.to_sql(con = engine, name=table_name_ac, if_exists='replace')
-
 
 
 
